@@ -63,8 +63,9 @@ export function pickRerankProvider(): RerankProvider | null {
 
 class LocalEmbeddingProvider implements EmbeddingProvider {
   readonly name = "local";
-  readonly batchSize = 32;
+  readonly batchSize: number;
   dim = 1024; // overwritten after first response
+  private readonly timeoutMs: number;
 
   constructor(
     private baseUrl: string,
@@ -73,6 +74,8 @@ class LocalEmbeddingProvider implements EmbeddingProvider {
   ) {
     // Strip trailing slash; allow base URLs that already include /v1 or that don't.
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.batchSize = parsePositiveInt(process.env.QONEQT_MCP_EMBED_BATCH_SIZE, 4, 1, 128);
+    this.timeoutMs = parsePositiveInt(process.env.QONEQT_MCP_EMBED_TIMEOUT_MS, 900_000, 30_000, 3_600_000);
   }
 
   async embed(input: string[]): Promise<Float32Array[]> {
@@ -94,6 +97,7 @@ class LocalEmbeddingProvider implements EmbeddingProvider {
       const res = await fetch(url, {
         method: "POST",
         headers,
+        signal: AbortSignal.timeout(this.timeoutMs),
         body: JSON.stringify({ model: this.model, input }),
       });
       if (!res.ok) {
@@ -130,6 +134,20 @@ class LocalEmbeddingProvider implements EmbeddingProvider {
     if (out[0]) this.dim = out[0].length;
     return out;
   }
+}
+
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const int = Math.floor(parsed);
+  if (int < min) return min;
+  if (int > max) return max;
+  return int;
 }
 
 class LocalRerankProvider implements RerankProvider {

@@ -4,7 +4,6 @@
  */
 import type { Store } from "./store.ts";
 import {
-  embedInBatches,
   f32ToBuffer,
   pickEmbeddingProvider,
   type EmbeddingProvider,
@@ -58,31 +57,33 @@ export async function runEmbeddingPass(
   let embedded = 0;
   let skipped = 0;
 
-  // Embed in batches via the provider; persist after each batch.
-  const inputs = pending.map((c) => c.text);
-  try {
-    const vectors = await embedInBatches(embedder, inputs, {
-      kind: "document",
-      onProgress: (done, total) => {
-        if (done % (embedder.batchSize * 4) === 0 || done === total) {
-          log(`[embed] ${done}/${total}…`);
+  for (let i = 0; i < pending.length; i += embedder.batchSize) {
+    const batch = pending.slice(i, i + embedder.batchSize);
+    const start = i + 1;
+    const end = i + batch.length;
+    log(`[embed] batch ${start}-${end}/${pending.length}…`);
+
+    try {
+      const vectors = await embedder.embed(batch.map((c) => c.text), {
+        kind: "document",
+      });
+      for (let j = 0; j < batch.length; j++) {
+        const v = vectors[j];
+        if (!v) {
+          skipped++;
+          continue;
         }
-      },
-    });
-    for (let i = 0; i < pending.length; i++) {
-      const v = vectors[i];
-      if (!v) {
-        skipped++;
-        continue;
+        store.updateChunkEmbedding(batch[j]!.symbol_id, f32ToBuffer(v));
+        embedded++;
       }
-      store.updateChunkEmbedding(pending[i]!.symbol_id, f32ToBuffer(v));
-      embedded++;
+      store.setMeta("embedder", `${embedder.name}/${embedder.model}`);
+      store.setMeta("embedded_at", new Date().toISOString());
+    } catch (err) {
+      skipped += batch.length;
+      log(`[embed] batch ${start}-${end} failed: ${(err as Error).message}`);
+      log("[embed] stopping early; rerun the same index command to resume remaining chunks.");
+      break;
     }
-    store.setMeta("embedder", `${embedder.name}/${embedder.model}`);
-    store.setMeta("embedded_at", new Date().toISOString());
-  } catch (err) {
-    log(`[embed] error: ${(err as Error).message}`);
-    skipped = pending.length - embedded;
   }
 
   return {
