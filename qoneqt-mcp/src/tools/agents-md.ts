@@ -117,7 +117,7 @@ async function renderAgentsMd(ctx: AgentsMdOpts): Promise<string> {
     "- Direct `fetch()` is the canonical data layer (despite Apollo / GraphQL / Supabase being installed). BEFORE writing a fetch, run `find_endpoint_callers` against the URL pattern.",
     "- Component names UpperCamelCase; hook names `useXxx`; context values are React Context API instances exported alongside a Provider component and a consumer hook.",
     "- The admin section lives under `src/app/walter_white/**`. Treat it as a separate scope.",
-    "- Some files are deliberately huge (`src/components/common/Icons.jsx` ~13K lines) and are skipped by the indexer. Read them only by line range.",
+    "- Some files are deliberately huge (`src/components/common/Icons.jsx` ~13K lines). They are indexed, but must be read only by line range.",
     "",
     "## Anti-patterns",
     "",

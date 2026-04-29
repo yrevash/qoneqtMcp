@@ -8,7 +8,7 @@ import { walkAppRouter } from "./router.ts";
 import type { Store } from "./store.ts";
 
 const SOURCE_GLOB = "src/**/*.{js,jsx,ts,tsx}";
-const SKIP_LARGER_THAN = 4000;
+const HUGE_FILE_LOG_THRESHOLD = 4000;
 
 export async function indexWorkspace(
   workspace: string,
@@ -57,10 +57,8 @@ export async function indexFile(
   const lineCount = source.split("\n").length;
   const hash = sha1(source);
 
-  if (lineCount > SKIP_LARGER_THAN) {
-    log(`SKIP huge ${relPath} (${lineCount} lines)`);
-    store.upsertFile(relPath, hash, lineCount);
-    return "skipped";
+  if (lineCount > HUGE_FILE_LOG_THRESHOLD) {
+    log(`INDEX huge ${relPath} (${lineCount} lines; symbols/fetches only, bounded reads later)`);
   }
 
   let parsed;
