@@ -67,14 +67,30 @@ export async function runEmbeddingPass(
     const end = i + batch.length;
     const batchNumber = Math.floor(i / embedder.batchSize) + 1;
     const batchStart = Date.now();
+    const batchChars = batch.reduce((sum, c) => sum + c.text.length, 0);
     log(
-      `[embed] batch ${batchNumber}/${totalBatches} chunks ${formatCount(start)}-${formatCount(end)}/${formatCount(pending.length)} starting (${formatPercent(i, pending.length)} pending done, elapsed ${formatDuration(batchStart - t0)})…`,
+      `[embed] batch ${batchNumber}/${totalBatches} chunks ${formatCount(start)}-${formatCount(end)}/${formatCount(pending.length)} starting (${formatPercent(i, pending.length)} pending done, ${formatCount(batchChars)} chars, elapsed ${formatDuration(batchStart - t0)})…`,
     );
 
     try {
-      const vectors = await embedder.embed(batch.map((c) => c.text), {
-        kind: "document",
-      });
+      const vectors = await withHeartbeat(
+        embedder.embed(batch.map((c) => c.text), {
+          kind: "document",
+        }),
+        {
+          intervalMs: parsePositiveInt(
+            process.env.QONEQT_MCP_EMBED_HEARTBEAT_MS,
+            30_000,
+            5_000,
+            300_000,
+          ),
+          onTick: () => {
+            log(
+              `[embed] still waiting for batch ${batchNumber}/${totalBatches} from ${embedder.name}/${embedder.model}: ${formatDuration(Date.now() - batchStart)} elapsed, ${formatCount(batchChars)} chars.`,
+            );
+          },
+        },
+      );
       for (let j = 0; j < batch.length; j++) {
         const v = vectors[j];
         if (!v) {
@@ -137,4 +153,30 @@ function formatDuration(ms: number | null): string {
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
   return `${hours}h ${restMinutes}m`;
+}
+
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const int = Math.floor(parsed);
+  if (int < min) return min;
+  if (int > max) return max;
+  return int;
+}
+
+async function withHeartbeat<T>(
+  promise: Promise<T>,
+  opts: { intervalMs: number; onTick: () => void },
+): Promise<T> {
+  const timer = setInterval(opts.onTick, opts.intervalMs);
+  try {
+    return await promise;
+  } finally {
+    clearInterval(timer);
+  }
 }

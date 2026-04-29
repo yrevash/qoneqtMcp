@@ -242,6 +242,7 @@ For team rollout, use `EMBEDDING_BASE_URL` and `RERANK_BASE_URL`. Hosted embeddi
 - `QONEQT_MCP_EMBED_MODEL` / `QONEQT_MCP_RERANK_MODEL` / `QONEQT_MCP_LLM_MODEL` — model overrides.
 - `QONEQT_MCP_EMBED_BATCH_SIZE` — local embedding batch size. Default `4`; use `1` on small CPU-only servers.
 - `QONEQT_MCP_EMBED_TIMEOUT_MS` — per embedding request timeout. Default `900000` (15 minutes).
+- `QONEQT_MCP_EMBED_HEARTBEAT_MS` — log interval while waiting for a local embedding request. Default `30000` (30 seconds).
 
 If no embedding URL is set, `find_similar_component` degrades to BM25-only and `explain_why` works fully (just no narrative). The MCP is functional with no external services.
 
