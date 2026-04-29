@@ -7,7 +7,8 @@ import type { EmbeddingProvider } from "./embeddings.ts";
 import type { ActivityLogger } from "../lib/activity-log.ts";
 
 const DEBOUNCE_MS = 500;
-const APP_ROUTER_FILES = /\/(page|layout|route)\.(js|jsx)$/;
+const SOURCE_GLOB = "src/**/*.{js,jsx,ts,tsx}";
+const APP_ROUTER_FILES = /\/(page|layout|route)\.(js|jsx|ts|tsx)$/;
 const EVENTS_TAIL_INTERVAL_MS = 2000;
 
 export interface WatcherOpts {
@@ -20,7 +21,7 @@ export interface WatcherOpts {
 
 export function startWatcher(opts: WatcherOpts): { stop: () => Promise<void> } {
   const log = opts.log ?? (() => {});
-  const watcher = chokidar.watch("src/**/*.{js,jsx}", {
+  const watcher = chokidar.watch(SOURCE_GLOB, {
     cwd: opts.workspace,
     ignoreInitial: true,
     persistent: true,
@@ -119,7 +120,7 @@ export function startWatcher(opts: WatcherOpts): { stop: () => Promise<void> } {
       }, EVENTS_TAIL_INTERVAL_MS)
     : null;
 
-  log(`[watcher] watching src/**/*.{js,jsx} under ${opts.workspace}`);
+  log(`[watcher] watching ${SOURCE_GLOB} under ${opts.workspace}`);
 
   return {
     stop: async () => {

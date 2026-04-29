@@ -40,7 +40,7 @@ export async function listFilesTool(
   workspace: string,
   args: { pattern?: string; max?: number },
 ): Promise<string> {
-  const pattern = args.pattern ?? "src/**/*.{js,jsx}";
+  const pattern = args.pattern ?? "src/**/*.{js,jsx,ts,tsx}";
   const max = Math.min(args.max ?? 200, 2000);
   const glob = new Glob(pattern);
 

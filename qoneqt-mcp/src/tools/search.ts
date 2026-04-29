@@ -99,7 +99,7 @@ function buildRipgrepCmd(args: {
     "--max-count",
     "10",
     ...(args.case_insensitive ? ["-i"] : []),
-    ...(args.glob ? ["-g", args.glob] : ["-g", "src/**/*.{js,jsx}"]),
+    ...(args.glob ? ["-g", args.glob] : ["-g", "src/**/*.{js,jsx,ts,tsx}"]),
     "-e",
     args.pattern,
   ];
@@ -110,14 +110,14 @@ function buildGrepCmd(args: {
   glob?: string;
   case_insensitive?: boolean;
 }): string[] {
-  // Default to JS/JSX in src/. If a custom glob is given, derive --include from its tail.
+  // Default to JS/JSX/TS/TSX in src/. If a custom glob is given, derive --include from its tail.
   const includes: string[] = [];
   if (args.glob) {
     // Take the file portion after the last '/'. e.g. 'src/contexts/*.js' → '*.js'.
     const tail = args.glob.split("/").pop() ?? "*";
     includes.push(`--include=${tail}`);
   } else {
-    includes.push("--include=*.js", "--include=*.jsx");
+    includes.push("--include=*.js", "--include=*.jsx", "--include=*.ts", "--include=*.tsx");
   }
   return [
     "grep",

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { Store } from "./index/store.ts";
 import { getDbPath, getWorkspaceRoot } from "./lib/paths.ts";
@@ -552,17 +553,99 @@ async function main() {
     log: (msg) => process.stderr.write(`${msg}\n`),
   });
 
+  let httpServer: ReturnType<typeof Bun.serve> | null = null;
+
+  if (process.env.QONEQT_MCP_TRANSPORT === "http") {
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      // Stateful mode lets the same HTTP transport handle multiple MCP requests.
+      // The SDK requires a fresh transport per request only in stateless mode.
+      sessionIdGenerator: () => crypto.randomUUID(),
+      // Codex's HTTP MCP client is most reliable with direct JSON responses during handshake.
+      enableJsonResponse: true,
+    });
+    await server.connect(transport);
+
+    const host = process.env.QONEQT_MCP_HOST ?? "127.0.0.1";
+    const port = Number(process.env.QONEQT_MCP_PORT ?? 8787);
+    const bearerToken = process.env.QONEQT_MCP_TOKEN;
+
+    httpServer = Bun.serve({
+      hostname: host,
+      port,
+      async fetch(req) {
+        const url = new URL(req.url);
+
+        if (req.method === "OPTIONS") {
+          return new Response(null, { status: 204, headers: corsHeaders() });
+        }
+
+        if (url.pathname === "/health") {
+          return json({ ok: true, name: "qoneqt-mcp", workspace });
+        }
+
+        if (url.pathname !== "/mcp") {
+          return json({ error: "not found" }, 404);
+        }
+
+        if (bearerToken) {
+          const auth = req.headers.get("authorization");
+          if (auth !== `Bearer ${bearerToken}`) {
+            return json({ error: "unauthorized" }, 401);
+          }
+        }
+
+        let res: Response;
+        try {
+          res = await transport.handleRequest(req);
+        } catch (err) {
+          process.stderr.write(
+            `[qoneqt-mcp] HTTP request failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`,
+          );
+          return json({ error: "mcp request failed" }, 500);
+        }
+        for (const [key, value] of Object.entries(corsHeaders())) {
+          res.headers.set(key, value);
+        }
+        return res;
+      },
+    });
+
+    process.stderr.write(
+      `[qoneqt-mcp] HTTP listening on http://${host}:${port}/mcp\n`,
+    );
+  } else {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+  }
+
   // Graceful shutdown
   const shutdown = async () => {
+    httpServer?.stop(true);
     await watcher.stop();
     store.close();
     process.exit(0);
   };
   process.once("SIGINT", () => void shutdown());
   process.once("SIGTERM", () => void shutdown());
+}
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+function corsHeaders(): Record<string, string> {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+    "access-control-allow-headers":
+      "authorization, content-type, mcp-session-id, mcp-protocol-version",
+  };
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json",
+      ...corsHeaders(),
+    },
+  });
 }
 
 function buildInstructions(opts: {

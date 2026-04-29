@@ -20,10 +20,18 @@ export function getDbPath(workspace: string): string {
   return resolve(getStoreDir(workspace), "index.sqlite");
 }
 
-export function getGrammarPath(): string {
+export type TreeSitterGrammar = "javascript" | "typescript" | "tsx";
+
+export function getGrammarPath(grammar: TreeSitterGrammar = "javascript"): string {
+  const file =
+    grammar === "typescript"
+      ? "tree-sitter-typescript.wasm"
+      : grammar === "tsx"
+        ? "tree-sitter-tsx.wasm"
+        : "tree-sitter-javascript.wasm";
   return resolve(
     import.meta.dir,
-    "../../node_modules/tree-sitter-wasms/out/tree-sitter-javascript.wasm",
+    `../../node_modules/tree-sitter-wasms/out/${file}`,
   );
 }
 

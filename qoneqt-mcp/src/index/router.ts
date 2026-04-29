@@ -2,9 +2,9 @@ import { Glob } from "bun";
 import { readFile } from "node:fs/promises";
 
 const APP_DIR = "src/app";
-const PAGE_GLOB = `${APP_DIR}/**/page.{js,jsx}`;
-const LAYOUT_GLOB = `${APP_DIR}/**/layout.{js,jsx}`;
-const API_GLOB = `${APP_DIR}/api/**/route.{js,jsx}`;
+const PAGE_GLOB = `${APP_DIR}/**/page.{js,jsx,ts,tsx}`;
+const LAYOUT_GLOB = `${APP_DIR}/**/layout.{js,jsx,ts,tsx}`;
+const API_GLOB = `${APP_DIR}/api/**/route.{js,jsx,ts,tsx}`;
 
 export interface DiscoveredPage {
   filePath: string;

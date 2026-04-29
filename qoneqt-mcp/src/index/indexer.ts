@@ -7,7 +7,7 @@ import { extractFromTree } from "./extract.ts";
 import { walkAppRouter } from "./router.ts";
 import type { Store } from "./store.ts";
 
-const SOURCE_GLOB = "src/**/*.{js,jsx}";
+const SOURCE_GLOB = "src/**/*.{js,jsx,ts,tsx}";
 const SKIP_LARGER_THAN = 4000;
 
 export async function indexWorkspace(
@@ -65,7 +65,7 @@ export async function indexFile(
 
   let parsed;
   try {
-    const tree = await parseSource(source);
+    const tree = await parseSource(source, relPath);
     parsed = extractFromTree(tree, source);
   } catch (err) {
     log(`SKIP parse-error ${relPath}: ${(err as Error).message}`);

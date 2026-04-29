@@ -77,27 +77,56 @@ class LocalEmbeddingProvider implements EmbeddingProvider {
 
   async embed(input: string[]): Promise<Float32Array[]> {
     if (input.length === 0) return [];
-    const url = this.baseUrl.endsWith("/v1")
-      ? `${this.baseUrl}/embeddings`
-      : `${this.baseUrl}/v1/embeddings`;
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (this.apiKey) headers["authorization"] = `Bearer ${this.apiKey}`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model: this.model, input }),
-    });
-    if (!res.ok) {
-      throw new Error(`local embed ${res.status}: ${await res.text()}`);
+    const openAiUrl = this.baseUrl.endsWith("/v1")
+      ? `${this.baseUrl}/embeddings`
+      : `${this.baseUrl}/v1/embeddings`;
+    const ollamaBase = this.baseUrl.replace(/\/(?:v1|api)$/, "");
+    const ollamaUrl = `${ollamaBase}/api/embed`;
+    const urls = this.baseUrl.endsWith("/api")
+      ? [ollamaUrl]
+      : [openAiUrl, ollamaUrl];
+
+    let lastError: string | null = null;
+    for (const url of urls) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: this.model, input }),
+      });
+      if (!res.ok) {
+        lastError = `local embed ${res.status} at ${url}: ${await res.text()}`;
+        if (res.status === 404 && url !== urls[urls.length - 1]) continue;
+        throw new Error(lastError);
+      }
+      return this.parseEmbeddingResponse(await res.json(), input.length);
     }
-    const json = (await res.json()) as {
-      data: { embedding: number[]; index: number }[];
-    };
-    const out = new Array<Float32Array>(input.length);
-    for (const item of json.data) {
-      out[item.index] = Float32Array.from(item.embedding);
+    throw new Error(lastError ?? "local embed failed");
+  }
+
+  private parseEmbeddingResponse(json: unknown, inputLength: number): Float32Array[] {
+    const openAi = json as { data?: { embedding: number[]; index: number }[] };
+    if (Array.isArray(openAi.data)) {
+      const out = new Array<Float32Array>(inputLength);
+      for (const item of openAi.data) {
+        out[item.index] = Float32Array.from(item.embedding);
+      }
+      if (out[0]) this.dim = out[0].length;
+      return out;
     }
+
+    const ollama = json as { embeddings?: number[][]; embedding?: number[] };
+    const embeddings = Array.isArray(ollama.embeddings)
+      ? ollama.embeddings
+      : Array.isArray(ollama.embedding)
+        ? [ollama.embedding]
+        : null;
+    if (!embeddings) {
+      throw new Error("local embed response did not contain embeddings");
+    }
+    const out = embeddings.map((v) => Float32Array.from(v));
     if (out[0]) this.dim = out[0].length;
     return out;
   }
