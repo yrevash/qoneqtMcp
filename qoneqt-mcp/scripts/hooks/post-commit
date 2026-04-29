@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# qoneqt-mcp git hook: post-commit
+# Drops one JSONL event per changed file into .qoneqt-mcp/git-events.jsonl
+# so the MCP server's activity log can attribute commits to the local git user.
+# Idempotent. Safe to fail (always exits 0).
+
+set -u
+WS="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+EVENTS_DIR="$WS/.qoneqt-mcp"
+EVENTS_FILE="$EVENTS_DIR/git-events.jsonl"
+mkdir -p "$EVENTS_DIR" 2>/dev/null
+
+SHA="$(git rev-parse HEAD 2>/dev/null)"
+[ -z "$SHA" ] && exit 0
+USER_NAME="$(git log -1 --format=%an "$SHA" 2>/dev/null)"
+USER_EMAIL="$(git log -1 --format=%ae "$SHA" 2>/dev/null)"
+SUBJECT="$(git log -1 --format=%s "$SHA" 2>/dev/null)"
+TS="$(date +%s)"
+
+# escape JSON
+esc() { printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'; }
+
+NAME_J=$(esc "$USER_NAME")
+EMAIL_J=$(esc "$USER_EMAIL")
+SUBJ_J=$(esc "$SUBJECT")
+
+# One event for the commit itself
+printf '{"ts":%s,"user":%s,"email":%s,"source":"commit","ref":"%s","action":"committed","detail":%s}\n' \
+  "$TS" "$NAME_J" "$EMAIL_J" "$SHA" "$SUBJ_J" >> "$EVENTS_FILE"
+
+# One event per changed file
+git diff-tree --no-commit-id --name-status -r "$SHA" 2>/dev/null | while IFS=$'\t' read -r STATUS PATHS; do
+  case "$STATUS" in
+    A*) ACTION="added" ;;
+    D*) ACTION="deleted" ;;
+    R*) ACTION="renamed" ;;
+    M*) ACTION="modified" ;;
+    *)  ACTION="modified" ;;
+  esac
+  # For renames git prints "R<score>\told\tnew" — take new
+  FILE=$(echo "$PATHS" | awk -F'\t' '{print $NF}')
+  [ -z "$FILE" ] && continue
+  PATH_J=$(esc "$FILE")
+  printf '{"ts":%s,"user":%s,"email":%s,"source":"commit","ref":"%s","file_path":%s,"action":"%s"}\n' \
+    "$TS" "$NAME_J" "$EMAIL_J" "$SHA" "$PATH_J" "$ACTION" >> "$EVENTS_FILE"
+done
+
+exit 0

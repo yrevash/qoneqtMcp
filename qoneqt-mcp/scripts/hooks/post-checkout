@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# qoneqt-mcp git hook: post-checkout (runs after `git checkout` / `git switch`)
+# Args from git: $1=prev_HEAD $2=new_HEAD $3=is_branch_switch (1 if branch change)
+# Only logs branch switches (not file checkouts).
+
+set -u
+[ "${3:-0}" = "1" ] || exit 0  # only branch checkouts
+
+WS="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+EVENTS_DIR="$WS/.qoneqt-mcp"
+EVENTS_FILE="$EVENTS_DIR/git-events.jsonl"
+mkdir -p "$EVENTS_DIR" 2>/dev/null
+
+USER_NAME="$(git config user.name 2>/dev/null)"
+[ -z "$USER_NAME" ] && USER_NAME="$USER"
+USER_EMAIL="$(git config user.email 2>/dev/null)"
+NEW_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+TS="$(date +%s)"
+
+esc() { printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'; }
+NAME_J=$(esc "$USER_NAME")
+EMAIL_J=$(esc "$USER_EMAIL")
+DETAIL_J=$(esc "from=${1:-?} to=${2:-?} branch=$NEW_BRANCH")
+
+printf '{"ts":%s,"user":%s,"email":%s,"source":"checkout","ref":"%s","action":"checked-out","detail":%s}\n' \
+  "$TS" "$NAME_J" "$EMAIL_J" "${2:-}" "$DETAIL_J" >> "$EVENTS_FILE"
+
+exit 0

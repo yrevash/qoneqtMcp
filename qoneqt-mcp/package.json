@@ -1,0 +1,36 @@
+{
+  "name": "qoneqt-mcp",
+  "version": "0.4.0",
+  "description": "Internal MCP server for Qoneqt v1 — gives coding agents grounded, precise context about the codebase.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "index": "bun run src/cli/index-cmd.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "bun run test/smoke.ts",
+    "bench": "bun run test/similar-bench.ts",
+    "install-hooks": "bash scripts/install-git-hooks.sh",
+    "rerank-server": ".venv/bin/python scripts/rerank-server.py",
+    "setup-local-stack": "ollama pull qwen3-embedding:8b && python3 -m venv .venv && .venv/bin/pip install --quiet sentence-transformers fastapi uvicorn torch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "chokidar": "^4.0.1",
+    "simple-git": "^3.27.0",
+    "tree-sitter-wasms": "^0.1.11",
+    "web-tree-sitter": "^0.24.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.3"
+  },
+  "trustedDependencies": [
+    "onnxruntime-node",
+    "protobufjs"
+  ]
+}
