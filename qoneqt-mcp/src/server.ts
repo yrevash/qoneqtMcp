@@ -66,6 +66,9 @@ async function main() {
   // Drain any git-event JSONL backlog that was emitted while we weren't running.
   await activity.flushPending().catch(() => {});
 
+  // A fresh McpServer must be created per HTTP session: the SDK's streamable-HTTP
+  // transport refuses a second `initialize` once any session is bound to it.
+  const buildServer = (): McpServer => {
   const server = new McpServer(
     { name: "qoneqt-mcp", version: "0.4.0" },
     {
@@ -541,6 +544,9 @@ async function main() {
     }),
   );
 
+    return server;
+  };
+
   // ===========================================================
   // File watcher — auto-reindex on save
   // ===========================================================
@@ -556,18 +562,14 @@ async function main() {
   let httpServer: ReturnType<typeof Bun.serve> | null = null;
 
   if (process.env.QONEQT_MCP_TRANSPORT === "http") {
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      // Stateful mode lets the same HTTP transport handle multiple MCP requests.
-      // The SDK requires a fresh transport per request only in stateless mode.
-      sessionIdGenerator: () => crypto.randomUUID(),
-      // Codex's HTTP MCP client is most reliable with direct JSON responses during handshake.
-      enableJsonResponse: true,
-    });
-    await server.connect(transport);
-
     const host = process.env.QONEQT_MCP_HOST ?? "127.0.0.1";
     const port = Number(process.env.QONEQT_MCP_PORT ?? 8787);
     const bearerToken = process.env.QONEQT_MCP_TOKEN;
+
+    // One transport (and one McpServer) per MCP session. The SDK rejects a
+    // second `initialize` on the same transport, so a single shared transport
+    // would lock out every client after the first one connects.
+    const transports = new Map<string, WebStandardStreamableHTTPServerTransport>();
 
     httpServer = Bun.serve({
       hostname: host,
@@ -594,6 +596,32 @@ async function main() {
           }
         }
 
+        let transport: WebStandardStreamableHTTPServerTransport | undefined;
+        const incomingSid = req.headers.get("mcp-session-id");
+        if (incomingSid) {
+          transport = transports.get(incomingSid);
+          if (!transport) {
+            return json({ error: "session not found" }, 404);
+          }
+        } else {
+          // No session id → must be `initialize`. Build a fresh transport+server
+          // and stash it in the map under the id the SDK assigns.
+          let captured: WebStandardStreamableHTTPServerTransport | null = null;
+          transport = new WebStandardStreamableHTTPServerTransport({
+            sessionIdGenerator: () => crypto.randomUUID(),
+            enableJsonResponse: true,
+            onsessioninitialized: (sid) => {
+              if (captured) transports.set(sid, captured);
+            },
+            onsessionclosed: (sid) => {
+              transports.delete(sid);
+            },
+          });
+          captured = transport;
+          const sessionServer = buildServer();
+          await sessionServer.connect(transport);
+        }
+
         let res: Response;
         try {
           res = await transport.handleRequest(req);
@@ -614,6 +642,7 @@ async function main() {
       `[qoneqt-mcp] HTTP listening on http://${host}:${port}/mcp\n`,
     );
   } else {
+    const server = buildServer();
     const transport = new StdioServerTransport();
     await server.connect(transport);
   }
